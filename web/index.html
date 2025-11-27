@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>🍍 Pineapple Ripeness — YOLOv8 · YOLOv11 · YOLOv12</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0b0d10; --panel:#12151a; --muted:#8a97a6; --text:#e8eef5; --line:#20242c;
+      --accent:#22c55e; --accent2:#60a5fa; --accent3:#f59e0b; --error:#ef4444;
+      --chip:#1b222c; --card:#0f1318;
+    }
+    @media (prefers-color-scheme: light){
+      :root{ --bg:#f7fafc; --panel:#ffffff; --muted:#5b6673; --text:#0b1016; --line:#e9edf2; --chip:#eef2f7; --card:#ffffff;}
+    }
+    * { box-sizing: border-box }
+    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text);}
+    .wrap{max-width:1100px; margin:auto; padding:24px;}
+
+    .header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; white-space:nowrap; }
+    .title{ display:flex; align-items:center; gap:.6rem; flex-wrap:nowrap; white-space:nowrap; }
+    .brand{ font-weight:800; font-size: clamp(18px,3vw,28px); letter-spacing:.2px }
+    .subtitle{ font-size: clamp(14px,2.2vw,24px) }
+    .muted{color:var(--muted)}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:nowrap}
+    .btn{background:var(--text); color:var(--bg); border:0; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600}
+    .btn.secondary{background:transparent; color:var(--text); border:1px solid var(--line)}
+    .btn:disabled{opacity:.6; pointer-events:none}
+
+    @media (max-width: 720px){
+      .header{ flex-wrap:wrap; white-space:normal }
+      .header .row{ width:100%; justify-content:flex-end; flex-wrap:wrap }
+    }
+
+    .grid{display:grid; grid-template-columns: 1.1fr .9fr; gap:18px}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow: 0 6px 16px rgba(0,0,0,.18)}
+    .drop{border:2px dashed var(--line); border-radius:14px; padding:18px; text-align:center; transition:.15s}
+    .drop.drag{border-color:var(--accent3); background:rgba(245,158,11,.06)}
+    canvas{max-width:100%; height:auto; display:block; background:#00000010; border-radius:12px; border:1px solid var(--line)}
+    .chip{background:var(--chip); border:1px solid var(--line); padding:6px 10px; border-radius:999px; font-size:.85rem}
+    .badge{padding:3px 8px; border-radius:6px; font-weight:700; font-size:.8rem; background:#111; color:#fff}
+    .ok{background:linear-gradient(90deg, #16a34a, #22c55e)}
+    .warn{background:linear-gradient(90deg, #f59e0b, #fbbf24)}
+    .err{background:linear-gradient(90deg, #ef4444, #f87171)}
+    .cards{display:grid; grid-template-columns:1fr; gap:10px}
+    .card{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px}
+    .card .left{display:flex; align-items:center; gap:10px}
+    .model{font-weight:700}
+    .bar{height:8px; width:160px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; border:1px solid var(--line)}
+    .bar > i{display:block; height:100%; width:0%}
+    .m8  .bar > i{background:linear-gradient(90deg, #22c55e, #86efac)}
+    .m11 .bar > i{background:linear-gradient(90deg, #60a5fa, #93c5fd)}
+    .m12 .bar > i{background:linear-gradient(90deg, #f59e0b, #fcd34d)}
+    .select{display:flex; gap:6px; align-items:center}
+    select{background:var(--chip); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 10px}
+    .verdict{display:flex; align-items:center; gap:8px; font-weight:700}
+
+    .toast{position:fixed; top:14px; right:14px; background:#111; color:#fff; padding:10px 14px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.3); z-index:9999}
+    .hist{width:100%; border-collapse:collapse; margin-top:6px}
+    .hist th,.hist td{padding:8px 10px; border-bottom:1px solid var(--line); font-size:.9rem}
+    .small{font-size:.85rem}
+    footer{margin-top:18px; text-align:center; color:var(--muted); font-size:.85rem}
+
+    .chartCard{margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px}
+    .chartTitle{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+    #cmpChart{width:100%; height:150px; border-radius:10px; background:transparent}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <div class="title">
+        <span class="brand">Systematic Pineapple Ripeness Detection </span>
+      </div>
+      <div class="row">
+        <a class="btn secondary" href="/logs.csv">Download CSV</a>
+        <button id="resetBtn" class="btn secondary">Reset</button>
+        <button id="runBtn" class="btn">Run Inference</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <div id="drop" class="drop" style="margin:12px 0">
+          <input id="file" type="file" accept="image/*" hidden />
+          <p class="muted">Drag & drop an image here or <a id="pick" href="#" onclick="return false;">browse</a></p>
+        </div>
+
+        <canvas id="canvas"></canvas>
+        <p id="imgMeta" class="small muted" style="margin-top:8px"></p>
+      </div>
+
+      <div class="panel">
+        <div class="row" style="justify-content:space-between; margin-bottom:6px">
+          <h3 style="margin:0">Results</h3>
+          <div id="statusBadge" class="badge warn">Idle</div>
+        </div>
+
+        <div class="row" style="justify-content:space-between; margin-bottom:10px">
+          <div class="select">
+            <label class="small muted">Draw boxes from</label>
+            <select id="drawFrom">
+              <option value="auto">Auto (first with boxes)</option>
+              <option value="YOLOv8">YOLOv8</option>
+              <option value="YOLOv11">YOLOv11</option>
+              <option value="YOLOv12">YOLOv12</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+          <div class="small muted" id="winnerChip" style="display:none"></div>
+        </div>
+
+        <div class="cards" id="cards"></div>
+
+        <div style="margin-top:12px" class="row">
+          <div class="verdict">
+            <span class="badge ok" id="verdictBadge">—</span>
+            <span id="verdictText" class="muted">Upload an image to see the verdict.</span>
+          </div>
+        </div>
+
+        <div id="chartBlock" class="chartCard" style="display:none">
+          <div class="chartTitle">
+            <div class="small muted">Per-image confidence comparison</div>
+            <div class="small muted">Higher is better</div>
+          </div>
+          <canvas id="cmpChart" width="560" height="150"></canvas>
+        </div>
+
+        <div style="margin-top:14px">
+          <details>
+            <summary class="small muted">Prediction history</summary>
+            <table class="hist" id="histTable">
+              <thead><tr><th>Time</th><th>v8</th><th>v11</th><th>v12</th><th>Verdict</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <footer>Tip: Majority vote chooses the label; the winning model & confidence are shown in the verdict. The chart compares each model’s confidence for this image.</footer>
+  </div>
+
+  <script>
+    const fileEl = document.getElementById('file');
+    const pickEl = document.getElementById('pick');
+    const dropEl = document.getElementById('drop');
+    const runBtn = document.getElementById('runBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const imgMeta = document.getElementById('imgMeta');
+    const cards = document.getElementById('cards');
+    const statusBadge = document.getElementById('statusBadge');
+    const verdictBadge = document.getElementById('verdictBadge');
+    const verdictText = document.getElementById('verdictText');
+    const histTable = document.querySelector('#histTable tbody');
+    const drawFromSel = document.getElementById('drawFrom');
+    const winnerChip = document.getElementById('winnerChip');
+    const chartBlock = document.getElementById('chartBlock');
+    const chartCanvas = document.getElementById('cmpChart');
+    const chartCtx = chartCanvas.getContext('2d');
+
+    let imgBitmap = null, lastJSON = null;
+
+    const toast = (msg,type='err')=>{
+      const t = document.createElement('div');
+      t.className='toast'; t.textContent = msg;
+      if(type==='ok') t.style.background='linear-gradient(90deg,#16a34a,#22c55e)';
+      if(type==='warn') t.style.background='linear-gradient(90deg,#f59e0b,#fbbf24)';
+      document.body.appendChild(t);
+      setTimeout(()=>t.remove(), 3000);
+    };
+
+    function setStatus(text, tone='warn'){ statusBadge.textContent = text; statusBadge.className='badge '+tone; }
+
+    function setVerdict(label, modelKey, conf=0){
+      verdictBadge.textContent = (label||'—').toUpperCase();
+      verdictBadge.className = 'badge ' + (label==='No detection'?'err':'ok');
+      if(label==='No detection' || !modelKey){
+        verdictText.textContent = '—';
+        winnerChip.style.display='none';
+      } else {
+        verdictText.textContent = `${modelKey} · ${(conf*100).toFixed(1)}%`;
+        winnerChip.textContent = `Best: ${modelKey}`;
+        winnerChip.style.display='block';
+      }
+    }
+
+    function makeCard(id, label, conf, ok, modelPath){
+      const root = document.createElement('div');
+      root.className = 'card ' + (id==='YOLOv8'?'m8':id==='YOLOv11'?'m11':'m12');
+      const left = document.createElement('div'); left.className='left';
+      const badge = document.createElement('span'); badge.className='chip'; badge.textContent = id;
+      const name = document.createElement('div'); name.className='model'; name.textContent = label || (ok?'—':'Error');
+      left.appendChild(badge); left.appendChild(name);
+
+      const right = document.createElement('div'); right.className='row';
+      const bar = document.createElement('div'); bar.className='bar'; const fill = document.createElement('i'); bar.appendChild(fill);
+      fill.style.width = (conf*100).toFixed(0)+'%';
+      const pct = document.createElement('div'); pct.className='muted small'; pct.textContent = ok? (conf*100).toFixed(1)+'%' : '—';
+      right.appendChild(bar); right.appendChild(pct);
+
+      root.appendChild(left); root.appendChild(right);
+      return root;
+    }
+
+    function drawBoxes(preds){
+      if(!imgBitmap) return;
+      ctx.drawImage(imgBitmap, 0, 0);
+      if(!Array.isArray(preds)) return;
+      ctx.lineWidth = 3;
+      preds.forEach(p=>{
+        if(typeof p.x !== 'number') return;
+        const bw = p.width ?? p.w, bh = p.height ?? p.h;
+        const left = (p.x - bw/2), top = (p.y - bh/2);
+        ctx.strokeStyle = '#22c55eaa';
+        ctx.fillStyle = 'rgba(34,197,94,.12)';
+        ctx.strokeRect(left, top, bw, bh);
+        const label = `${p.class??'?'} ${(p.confidence*100).toFixed(1)}%`;
+        ctx.fillRect(left, top-22, ctx.measureText(label).width+10, 20);
+        ctx.fillStyle = '#0b0d10';
+        ctx.fillText(label, left+5, top-7);
+      });
+    }
+
+    function applyDrawSelection(json){
+      const mode = drawFromSel.value;
+      if(mode==='none'){ if(imgBitmap) ctx.drawImage(imgBitmap,0,0); return; }
+      if(mode==='auto'){
+        for(const k of ['YOLOv8','YOLOv11','YOLOv12']){
+          const preds = json?.[k]?.predictions||[];
+          if(preds.some(p=>typeof p.x === 'number')){ drawBoxes(preds); return; }
+        }
+        if(imgBitmap) ctx.drawImage(imgBitmap,0,0);
+        return;
+      }
+      drawBoxes(json?.[mode]?.predictions||[]);
+    }
+
+    function pushHistory(json, verdict, winnerKey){
+      const tr = document.createElement('tr');
+      const ts = new Date().toLocaleTimeString();
+      const td = (t)=>{ const el=document.createElement('td'); el.textContent=t; return el; };
+      tr.appendChild(td(ts));
+      ['YOLOv8','YOLOv11','YOLOv12'].forEach(k=>{
+        const s = json?.[k]?.summary; tr.appendChild(td(s? `${s.class} ${(s.confidence*100).toFixed(0)}%` : '—'));
+      });
+      tr.appendChild(td(`${verdict.label} ${(verdict.confidence*100).toFixed(0)}%${winnerKey?` (${winnerKey})`:''}`));
+      histTable.prepend(tr);
+    }
+
+    function renderChart(json){
+      const vals = [
+        {k:'YOLOv8',  c: json?.YOLOv8?.summary?.confidence ?? 0},
+        {k:'YOLOv11', c: json?.YOLOv11?.summary?.confidence ?? 0},
+        {k:'YOLOv12', c: json?.YOLOv12?.summary?.confidence ?? 0},
+      ];
+      const w = chartCanvas.width, h = chartCanvas.height;
+      chartCtx.clearRect(0,0,w,h);
+
+      chartCtx.fillStyle = 'rgba(255,255,255,.03)';
+      chartCtx.fillRect(0,0,w,h);
+      chartCtx.strokeStyle = 'rgba(255,255,255,.08)';
+      chartCtx.lineWidth = 1;
+      for(let i=0;i<=5;i++){
+        const y = 10 + (h-20) * (i/5);
+        chartCtx.beginPath(); chartCtx.moveTo(40, y); chartCtx.lineTo(w-10, y); chartCtx.stroke();
+        chartCtx.fillStyle='#8a97a6'; chartCtx.font='10px system-ui';
+        chartCtx.fillText(`${(100- i*20)}%`, 8, y+3);
+      }
+
+      const x0 = 52, barW = 70, gap = 45;
+      const maxH = h - 30; 
+      vals.forEach((v,i)=>{
+        const bh = Math.max(2, (v.c) * maxH);
+        const x = x0 + i*(barW+gap), y = h - 10 - bh;
+        
+        chartCtx.fillStyle = (v.k==='YOLOv8')  ? '#22c55e' :
+                             (v.k==='YOLOv11') ? '#60a5fa' : '#f59e0b';
+        chartCtx.fillRect(x, y, barW, bh);
+        
+        chartCtx.strokeStyle='rgba(255,255,255,.2)';
+        chartCtx.strokeRect(x, y, barW, bh);
+       
+        chartCtx.fillStyle='#cbd5e1'; chartCtx.font='11px system-ui';
+        chartCtx.fillText(v.k.replace('YOLOv','v'), x+barW/2-7, h-2);
+        chartCtx.fillText((v.c*100).toFixed(1)+'%', x+barW/2-18, y-4);
+      });
+
+      chartBlock.style.display='block';
+    }
+
+    document.getElementById('pick').addEventListener('click', ()=>fileEl.click());
+    ;['dragenter','dragover'].forEach(evt=>dropEl.addEventListener(evt, e=>{
+      e.preventDefault(); dropEl.classList.add('drag');
+    }));
+    ;['dragleave','drop'].forEach(evt=>dropEl.addEventListener(evt, e=>{
+      e.preventDefault(); dropEl.classList.remove('drag');
+    }));
+    dropEl.addEventListener('drop', e=>{
+      e.preventDefault(); if(e.dataTransfer.files?.[0]) { fileEl.files = e.dataTransfer.files; fileChanged(); }
+    });
+    fileEl.addEventListener('change', fileChanged);
+
+    async function fileChanged(){
+      const file = fileEl.files?.[0];
+      if(!file) return;
+      const bmp = await createImageBitmap(file);
+      imgBitmap = bmp;
+      canvas.width = bmp.width; canvas.height = bmp.height;
+      ctx.drawImage(bmp,0,0);
+      imgMeta.textContent = `${file.name} — ${bmp.width}×${bmp.height} · ${(file.size/1024).toFixed(0)} KB`;
+      cards.innerHTML = '';
+      setVerdict('—', null, 0);
+      setStatus('Ready', 'warn');
+      winnerChip.style.display='none';
+      chartBlock.style.display='none';
+      chartCtx.clearRect(0,0,chartCanvas.width, chartCanvas.height);
+    }
+
+    resetBtn.addEventListener('click', ()=>{
+      fileEl.value = '';
+      imgBitmap = null; lastJSON = null;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      imgMeta.textContent = '';
+      cards.innerHTML = '';
+      setVerdict('—', null, 0);
+      setStatus('Idle','warn');
+      winnerChip.style.display='none';
+      chartBlock.style.display='none';
+      chartCtx.clearRect(0,0,chartCanvas.width, chartCanvas.height);
+    });
+
+    drawFromSel.addEventListener('change', ()=>{ if(lastJSON) applyDrawSelection(lastJSON); });
+
+    
+    runBtn.addEventListener('click', async ()=>{
+      const file = fileEl.files?.[0];
+      if(!file){ toast('Please choose an image first.', 'warn'); return; }
+      try{
+        runBtn.disabled = true; runBtn.innerHTML = '<span class="spinner"></span>';
+        setStatus('Running…','warn');
+
+        const form = new FormData(); form.append('file', file);
+        const res = await fetch('/infer', { method:'POST', body: form });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const json = await res.json();
+        lastJSON = json;
+
+        
+        cards.innerHTML = '';
+        const make = (key,label)=> {
+          const r = json[key]; const ok = !!r?.ok;
+          const conf = ok && r?.summary ? (r.summary.confidence||0) : 0;
+          cards.appendChild(makeCard(key, ok? r.summary.class : 'Error', conf, ok, r?.model||''));
+        };
+        make('YOLOv8'); make('YOLOv11'); make('YOLOv12');
+
+        
+        const pick = []; ['YOLOv8','YOLOv11','YOLOv12'].forEach(k=>{
+          const r = json?.[k]; if(r?.ok && r.summary) pick.push([k, r.summary.class, r.summary.confidence]);
+        });
+        let verdict = {label:'No detection', confidence:0}, winnerKey = null;
+
+        if(pick.length){
+          const counts = {}; for(const [,lab] of pick){ counts[lab]=(counts[lab]||0)+1; }
+          const top = Math.max(...Object.values(counts));
+          const finalists = Object.entries(counts).filter(([,c])=>c===top).map(([l])=>l);
+          if(finalists.length===1){
+            const label = finalists[0];
+            const winning = pick
+              .filter(([,lab])=>lab===label)
+              .sort((a,b)=>b[2]-a[2])[0];
+            verdict = {label, confidence: winning[2]};
+            winnerKey = winning[0];
+          } else {
+            const best = pick.filter(([,lab])=>finalists.includes(lab)).sort((a,b)=>b[2]-a[2])[0];
+            verdict = {label:best[1], confidence:best[2]};
+            winnerKey = best[0];
+          }
+        }
+
+        setVerdict(verdict.label, winnerKey, verdict.confidence);
+        applyDrawSelection(json);
+        pushHistory(json, verdict, winnerKey);
+        renderChart(json);
+
+        setStatus('Done','ok');
+      } catch(err){
+        console.error(err);
+        setStatus('Error','err'); toast('Inference failed. Check server logs.', 'err');
+      } finally {
+        runBtn.disabled = false; runBtn.textContent = 'Run Inference';
+      }
+    });
+  </script>
+</body>
+</html>
